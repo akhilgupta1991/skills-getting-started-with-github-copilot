@@ -14,6 +14,11 @@ from pathlib import Path
 app = FastAPI(title="Mergington High School API",
               description="API for viewing and signing up for extracurricular activities")
 
+
+def normalize_email(email: str) -> str:
+    return email.strip().lower()
+
+
 # Mount the static files directory
 current_dir = Path(__file__).parent
 app.mount("/static", StaticFiles(directory=os.path.join(Path(__file__).parent,
@@ -97,14 +102,16 @@ def signup_for_activity(activity_name: str, email: str):
 
     # Get the specific activity
     activity = activities[activity_name]
+    normalized_email = normalize_email(email)
 
-    # Validate student is not already signed up
-    if email in activity["participants"]:
+    # Validate student is not already signed up (case-insensitive and trims whitespace)
+    existing_participants = [normalize_email(participant) for participant in activity["participants"]]
+    if normalized_email in existing_participants:
         raise HTTPException(status_code=400, detail="Student already signed up for this activity")
 
     # Add student
-    activity["participants"].append(email)
-    return {"message": f"Signed up {email} for {activity_name}", "participants": activity["participants"]}
+    activity["participants"].append(normalized_email)
+    return {"message": f"Signed up {normalized_email} for {activity_name}", "participants": activity["participants"]}
 
 
 @app.delete("/activities/{activity_name}/unregister")
@@ -114,9 +121,15 @@ def unregister_participant(activity_name: str, email: str):
         raise HTTPException(status_code=404, detail="Activity not found")
 
     activity = activities[activity_name]
+    normalized_email = normalize_email(email)
 
-    if email not in activity["participants"]:
+    normalized_participants = [normalize_email(participant) for participant in activity["participants"]]
+    if normalized_email not in normalized_participants:
         raise HTTPException(status_code=404, detail="Participant not found in this activity")
 
-    activity["participants"].remove(email)
-    return {"message": f"Unregistered {email} from {activity_name}", "participants": activity["participants"]}
+    for participant in list(activity["participants"]):
+        if normalize_email(participant) == normalized_email:
+            activity["participants"].remove(participant)
+            break
+
+    return {"message": f"Unregistered {normalized_email} from {activity_name}", "participants": activity["participants"]}
